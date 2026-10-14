@@ -29,7 +29,7 @@ const DEPARTMENTS = [
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { loginUser, registerUser, isAuthenticated, isStudent, isFaculty } = useAuth();
+  const { loginUser, registerUser, isAuthenticated, isStudent, isFaculty, isAdmin } = useAuth();
 
   // Mode: 'LOGIN' | 'REGISTER'
   const [mode, setMode] = useState('LOGIN');
@@ -61,11 +61,13 @@ export default function LoginPage() {
     if (isAuthenticated) {
       if (isStudent) {
         navigate('/student/dashboard', { replace: true });
+      } else if (isAdmin) {
+        navigate('/admin/dashboard', { replace: true });
       } else if (isFaculty) {
         navigate('/faculty/events', { replace: true });
       }
     }
-  }, [isAuthenticated, isStudent, isFaculty, navigate]);
+  }, [isAuthenticated, isStudent, isFaculty, isAdmin, navigate]);
 
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
@@ -80,6 +82,8 @@ export default function LoginPage() {
         } else {
           if (result.user.role === 'STUDENT') {
             navigate('/student/dashboard');
+          } else if (result.user.role === 'HOD_ADMIN') {
+            navigate('/admin/dashboard');
           } else {
             navigate('/faculty/events');
           }
@@ -105,6 +109,8 @@ export default function LoginPage() {
         } else {
           if (result.user.role === 'STUDENT') {
             navigate('/student/dashboard');
+          } else if (result.user.role === 'HOD_ADMIN') {
+            navigate('/admin/dashboard');
           } else {
             navigate('/faculty/events');
           }
@@ -349,7 +355,7 @@ export default function LoginPage() {
                       <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
                         Account Role
                       </label>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-3 gap-2">
                         <button
                           type="button"
                           onClick={() => setRole('STUDENT')}
@@ -370,7 +376,18 @@ export default function LoginPage() {
                               : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
                           }`}
                         >
-                          Faculty / Coordinator
+                          Faculty
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRole('HOD_ADMIN')}
+                          className={`py-2 px-3 text-xs font-medium rounded border text-center transition-colors ${
+                            role === 'HOD_ADMIN'
+                              ? 'bg-slate-900 text-white border-slate-900'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          HOD Admin / Coordinator
                         </button>
                       </div>
                     </div>
@@ -428,11 +445,11 @@ export default function LoginPage() {
                       </div>
                     )}
 
-                    {/* Faculty Institutional Passcode — Required for FACULTY / HOD_ADMIN */}
-                    {role === 'FACULTY' && (
+                    {/* Institutional passcode is required for Faculty and HOD Admin accounts */}
+                    {(role === 'FACULTY' || role === 'HOD_ADMIN') && (
                       <div>
                         <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
-                          Institutional Faculty Passcode
+                          Institutional Registration Passcode
                         </label>
                         <div className="relative">
                           <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -441,13 +458,13 @@ export default function LoginPage() {
                             required
                             value={facultyPasscode}
                             onChange={(e) => setFacultyPasscode(e.target.value)}
-                            placeholder="Enter passcode provided by HOD / Admin"
+                            placeholder="Enter the passcode issued for your selected role"
                             className="w-full pl-9 pr-3 py-2 text-sm font-mono border border-slate-300 rounded focus:outline-none focus:border-slate-900"
                           />
                         </div>
                         <p className="mt-1.5 text-[11px] text-amber-600 flex items-start gap-1">
                           <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
-                          <span>This passcode is distributed by your department HOD or institutional admin. Students do not have access to this credential.</span>
+                          <span>An HOD/Admin must issue a passcode for your selected role and department. Students do not need a passcode.</span>
                         </p>
                       </div>
                     )}

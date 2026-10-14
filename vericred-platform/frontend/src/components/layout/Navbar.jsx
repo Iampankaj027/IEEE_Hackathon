@@ -44,6 +44,8 @@ export default function Navbar() {
                   ? '/login'
                   : isStudent
                   ? '/student/dashboard'
+                  : isAdmin
+                  ? '/admin/dashboard'
                   : '/faculty/events'
               }
               className="flex items-center gap-2.5 group"

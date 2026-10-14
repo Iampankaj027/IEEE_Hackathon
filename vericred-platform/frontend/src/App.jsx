@@ -27,7 +27,13 @@ function ProtectedRoute({ children, allowedRoles }) {
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return (
       <Navigate
-        to={user.role === 'STUDENT' ? '/student/dashboard' : '/faculty/events'}
+        to={
+          user.role === 'STUDENT'
+            ? '/student/dashboard'
+            : user.role === 'HOD_ADMIN'
+            ? '/admin/dashboard'
+            : '/faculty/events'
+        }
         replace
       />
     );
