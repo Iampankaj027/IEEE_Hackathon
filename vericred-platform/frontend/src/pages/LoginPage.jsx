@@ -96,7 +96,7 @@ export default function LoginPage() {
           password,
           role,
           rollNo: role === 'STUDENT' ? rollNo.toUpperCase() : undefined,
-          facultyPasscode: role === 'FACULTY' || role === 'HOD_ADMIN' ? facultyPasscode : undefined,
+          facultyPasscode: role === 'FACULTY' ? facultyPasscode : undefined,
           department,
           batchYear: parseInt(batchYear, 10),
           currentSemester: parseInt(currentSemester, 10),
@@ -336,7 +336,7 @@ export default function LoginPage() {
                 <p className="text-xs text-slate-500 mt-1">
                   {mode === 'LOGIN'
                     ? 'Enter your institutional email and password to access your role workspace.'
-                    : 'Enroll as a Student or Faculty member to issue, claim, or grade participation records.'}
+                    : 'Enroll as a Student or Faculty member to claim and grade participation records.'}
                 </p>
               </div>
 
@@ -355,7 +355,7 @@ export default function LoginPage() {
                       <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
                         Account Role
                       </label>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={() => setRole('STUDENT')}
@@ -377,17 +377,6 @@ export default function LoginPage() {
                           }`}
                         >
                           Faculty
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setRole('HOD_ADMIN')}
-                          className={`py-2 px-3 text-xs font-medium rounded border text-center transition-colors ${
-                            role === 'HOD_ADMIN'
-                              ? 'bg-slate-900 text-white border-slate-900'
-                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                          }`}
-                        >
-                          HOD Admin / Coordinator
                         </button>
                       </div>
                     </div>
@@ -445,8 +434,8 @@ export default function LoginPage() {
                       </div>
                     )}
 
-                    {/* Institutional passcode is required for Faculty and HOD Admin accounts */}
-                    {(role === 'FACULTY' || role === 'HOD_ADMIN') && (
+                    {/* Institutional passcode is required for Faculty accounts */}
+                    {role === 'FACULTY' && (
                       <div>
                         <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
                           Institutional Registration Passcode
