@@ -1,0 +1,452 @@
+const fs = require('fs');
+const csv = require('csv-parser');
+const prisma = require('../config/db');
+const { calculateCertificatePoints } = require('../config/creditRules');
+const {
+  generateCertificateNo,
+  createSignedCertificateBundle,
+} = require('./cryptoSigner');
+const { buildCertificatePdf } = require('./certificateBuilder');
+
+/**
+ * Normalizes human-written role strings from a Faculty CSV (e.g., "1st Prize", "Winner", "Coord")
+ * into the strict Prisma ParticipationRole enum.
+ *
+ * @param {string} rawRole
+ * @returns {string} Valid ParticipationRole enum value
+ */
+function normalizeParticipationRole(rawRole) {
+  if (!rawRole) return 'PARTICIPANT';
+  const cleaned = String(rawRole).trim().toUpperCase();
+
+  if (
+    cleaned === 'WINNER_1ST' ||
+    cleaned === '1ST' ||
+    cleaned === 'FIRST' ||
+    cleaned === 'WINNER' ||
+    cleaned === '1ST PLACE' ||
+    cleaned === 'GOLD'
+  ) {
+    return 'WINNER_1ST';
+  }
+  if (
+    cleaned === 'WINNER_2ND' ||
+    cleaned === '2ND' ||
+    cleaned === 'SECOND' ||
+    cleaned === 'RUNNER UP' ||
+    cleaned === 'RUNNER-UP' ||
+    cleaned === '2ND PLACE' ||
+    cleaned === 'SILVER'
+  ) {
+    return 'WINNER_2ND';
+  }
+  if (
+    cleaned === 'WINNER_3RD' ||
+    cleaned === '3RD' ||
+    cleaned === 'THIRD' ||
+    cleaned === '2ND RUNNER UP' ||
+    cleaned === '3RD PLACE' ||
+    cleaned === 'BRONZE'
+  ) {
+    return 'WINNER_3RD';
+  }
+  if (cleaned.includes('FINALIST')) {
+    return 'FINALIST';
+  }
+  if (
+    cleaned.includes('ORGANIZER') ||
+    cleaned.includes('COORDINATOR') ||
+    cleaned.includes('LEAD')
+  ) {
+    return 'ORGANIZER';
+  }
+  if (cleaned.includes('VOLUNTEER')) {
+    return 'VOLUNTEER';
+  }
+
+  return 'PARTICIPANT';
+}
+
+/**
+ * Extracts a field from a CSV row object case-insensitively across multiple possible header aliases.
+ *
+ * @param {Object} row - Raw row object from csv-parser
+ * @param {string[]} possibleKeys - Array of lowercase header names to check
+ * @returns {string|null}
+ */
+function extractCsvField(row, possibleKeys) {
+  const rowKeys = Object.keys(row);
+  for (const key of rowKeys) {
+    const normalizedKey = key.trim().toLowerCase().replace(/[\s_-]+/g, '');
+    if (possibleKeys.includes(normalizedKey)) {
+      const val = row[key];
+      if (val !== undefined && val !== null && String(val).trim() !== '') {
+        return String(val).trim();
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Parses an uploaded CSV file into a clean, deduplicated array of participant records.
+ *
+ * @param {string} filePath - Absolute path to uploaded CSV file
+ * @returns {Promise<Array<{ studentRollNo: string, studentName: string|null, participationRole: string }>>}
+ */
+function parseParticipantCsv(filePath) {
+  return new Promise((resolve, reject) => {
+    const participantsMap = new Map();
+
+    fs.createReadStream(filePath)
+      .pipe(csv())
+      .on('data', (row) => {
+        const rawRollNo = extractCsvField(row, [
+          'rollno',
+          'rollnumber',
+          'studentrollno',
+          'enrollmentno',
+          'enrollment',
+          'universityrollno',
+          'regno',
+          'id',
+        ]);
+
+        if (!rawRollNo) return; // Skip empty or malformed rows without a Roll No
+
+        const studentRollNo = rawRollNo.toUpperCase();
+        const studentName = extractCsvField(row, [
+          'name',
+          'studentname',
+          'fullname',
+          'participantname',
+        ]);
+        const rawRole = extractCsvField(row, [
+          'role',
+          'participationrole',
+          'position',
+          'rank',
+          'status',
+          'category',
+          'achievement',
+        ]);
+
+        const participationRole = normalizeParticipationRole(rawRole);
+
+        participantsMap.set(studentRollNo, {
+          studentRollNo,
+          studentName: studentName || null,
+          participationRole,
+        });
+      })
+      .on('end', () => {
+        resolve(Array.from(participantsMap.values()));
+      })
+      .on('error', (error) => {
+        reject(new Error(`CSV Parsing Error: ${error.message}`));
+      });
+  });
+}
+
+/**
+ * Atomic helper that approves a student's ParticipationClaim, generates the HMAC-SHA256
+ * cryptographic signature, builds the PDF certificate with QR code, saves the Certificate
+ * record, and increments the student's totalCreditPoints.
+ *
+ * Used by BOTH the CSV Auto-Matcher and Faculty 1-Click Approval.
+ *
+ * @param {Object} params
+ * @param {string} params.claimId - UUID of the ParticipationClaim
+ * @param {string} params.approvalStatus - 'APPROVED_BY_CSV' | 'APPROVED_BY_FACULTY'
+ * @param {string} [params.verifiedById] - UUID of Faculty User who verified/uploaded CSV
+ * @param {string} [params.overrideRole] - Optional authoritative role from Faculty CSV
+ * @returns {Promise<Object>} The newly created Certificate record
+ */
+async function issueCertificateForClaim({
+  claimId,
+  approvalStatus,
+  verifiedById = null,
+  overrideRole = null,
+}) {
+  // 1. Fetch complete claim with student, event, and verifier details
+  const claim = await prisma.participationClaim.findUnique({
+    where: { id: claimId },
+    include: {
+      student: true,
+      event: {
+        include: {
+          createdBy: true,
+        },
+      },
+      certificate: true,
+    },
+  });
+
+  if (!claim) {
+    throw new Error(`Claim with ID ${claimId} not found.`);
+  }
+
+  // If certificate is already generated for this claim, return it idempotently
+  if (claim.certificate) {
+    return claim.certificate;
+  }
+
+  const finalRole = overrideRole || claim.claimedRole;
+  const issuedAt = new Date();
+  const certificateNo = generateCertificateNo();
+  const studentRollNo = (claim.student.rollNo || claim.student.id).toUpperCase();
+
+  // 2. Calculate credit points based on Event Scope + Final Participation Role
+  const creditPoints = calculateCertificatePoints(claim.event.scope, finalRole);
+  const semester = claim.student.currentSemester || claim.event.semesterTag || 5;
+
+  // 3. Create Cryptographic Payload & HMAC-SHA256 Signature
+  const { payloadString, cryptoSignature, qrVerificationUrl } =
+    createSignedCertificateBundle({
+      certificateNo,
+      studentRollNo,
+      eventId: claim.event.id,
+      participationRole: finalRole,
+      issuedAt,
+    });
+
+  // Determine Verifier display name for the PDF
+  let verifierName = 'Institutional Verification Cell (IQAC)';
+  if (verifiedById) {
+    const verifierUser = await prisma.user.findUnique({
+      where: { id: verifiedById },
+      select: { name: true, department: true },
+    });
+    if (verifierUser) {
+      verifierName = `${verifierUser.name} (${verifierUser.department})`;
+    }
+  } else if (claim.event.createdBy) {
+    verifierName = `${claim.event.createdBy.name} (${claim.event.organizerDept})`;
+  }
+
+  // 4. Generate the physical PDF Certificate with embedded QR Code
+  const { publicPdfUrl } = await buildCertificatePdf({
+    certificateNo,
+    studentName: claim.student.name,
+    studentRollNo,
+    studentDepartment: claim.student.department,
+    eventTitle: claim.event.title,
+    eventCategory: claim.event.category,
+    eventScope: claim.event.scope,
+    eventDate: claim.event.eventDate,
+    participationRole: finalRole,
+    creditPoints,
+    semester,
+    cryptoSignature,
+    qrVerificationUrl,
+    issuedAt,
+    verifierName,
+  });
+
+  // 5. Execute Database Transaction: Update Claim + Create Certificate + Increment Student Points
+  const createdCertificate = await prisma.$transaction(async (tx) => {
+    await tx.participationClaim.update({
+      where: { id: claim.id },
+      data: {
+        claimedRole: finalRole,
+        status: approvalStatus,
+        verifiedById: verifiedById || claim.event.createdById,
+        verifiedAt: issuedAt,
+        rejectionReason: null,
+      },
+    });
+
+    const cert = await tx.certificate.create({
+      data: {
+        certificateNo,
+        claimId: claim.id,
+        studentId: claim.student.id,
+        eventId: claim.event.id,
+        participationRole: finalRole,
+        creditPoints,
+        semester,
+        payloadString,
+        cryptoSignature,
+        qrVerificationUrl,
+        pdfUrl: publicPdfUrl,
+        issuedAt,
+      },
+    });
+
+    await tx.user.update({
+      where: { id: claim.student.id },
+      data: {
+        totalCreditPoints: {
+          increment: creditPoints,
+        },
+      },
+    });
+
+    // Mark CSV roster entry as claimed if present
+    await tx.eventCsvRoster.updateMany({
+      where: {
+        eventId: claim.event.id,
+        studentRollNo,
+      },
+      data: {
+        isClaimed: true,
+      },
+    });
+
+    return cert;
+  });
+
+  return createdCertificate;
+}
+
+/**
+ * Processes a Faculty CSV Upload for a specific Event:
+ * 1. Parses and upserts all rows into EventCsvRoster.
+ * 2. Finds any existing PENDING claims from students whose Roll No is in the CSV.
+ * 3. Automatically verifies those claims and issues their cryptographic certificates.
+ * 4. Also auto-creates claims + certificates for registered students in the DB who haven't manually filled the form yet!
+ *
+ * @param {Object} params
+ * @param {string} params.eventId - UUID of the Event
+ * @param {string} params.csvFilePath - Path to uploaded CSV file
+ * @param {string} params.facultyId - UUID of the Faculty uploading the CSV
+ * @param {boolean} [params.autoIssueForRegisteredStudents=true] - If a student exists in User table with that RollNo, issue cert directly even if they didn't submit a manual claim yet
+ * @returns {Promise<{
+ *   totalRowsParsed: number,
+ *   rosterSavedCount: number,
+ *   pendingClaimsAutoVerified: number,
+ *   directCertificatesIssued: number,
+ *   issuedCertificates: Array<Object>
+ * }>}
+ */
+async function processEventCsvUpload({
+  eventId,
+  csvFilePath,
+  facultyId,
+  autoIssueForRegisteredStudents = true,
+}) {
+  const parsedRows = await parseParticipantCsv(csvFilePath);
+
+  if (parsedRows.length === 0) {
+    throw new Error(
+      'No valid student records found in CSV. Ensure the CSV has a column named "roll_no" or "RollNo".'
+    );
+  }
+
+  let rosterSavedCount = 0;
+  let pendingClaimsAutoVerified = 0;
+  let directCertificatesIssued = 0;
+  const issuedCertificates = [];
+
+  for (const row of parsedRows) {
+    const { studentRollNo, studentName, participationRole } = row;
+
+    // 1. Upsert into EventCsvRoster
+    await prisma.eventCsvRoster.upsert({
+      where: {
+        eventId_studentRollNo: {
+          eventId,
+          studentRollNo,
+        },
+      },
+      update: {
+        studentName,
+        participationRole,
+      },
+      create: {
+        eventId,
+        studentRollNo,
+        studentName,
+        participationRole,
+        isClaimed: false,
+      },
+    });
+    rosterSavedCount++;
+
+    // 2. Check if a student with this Roll No exists in the User table
+    const studentUser = await prisma.user.findUnique({
+      where: { rollNo: studentRollNo },
+    });
+
+    if (!studentUser) {
+      // Student hasn't registered on the platform yet; their row stays in EventCsvRoster
+      // and will auto-verify the moment they register and submit a claim.
+      continue;
+    }
+
+    // 3. Check if this student already submitted a ParticipationClaim for this event
+    const existingClaim = await prisma.participationClaim.findUnique({
+      where: {
+        studentId_eventId: {
+          studentId: studentUser.id,
+          eventId,
+        },
+      },
+      include: {
+        certificate: true,
+      },
+    });
+
+    if (existingClaim) {
+      if (!existingClaim.certificate) {
+        // Auto-verify their pending claim and generate their certificate!
+        const cert = await issueCertificateForClaim({
+          claimId: existingClaim.id,
+          approvalStatus: 'APPROVED_BY_CSV',
+          verifiedById: facultyId,
+          overrideRole: participationRole,
+        });
+        pendingClaimsAutoVerified++;
+        issuedCertificates.push(cert);
+      }
+    } else if (autoIssueForRegisteredStudents) {
+      // Student is registered in DB but hasn't filled the claim form yet.
+      // Create the claim automatically from Faculty's official CSV and issue the certificate immediately!
+      const newClaim = await prisma.participationClaim.create({
+        data: {
+          studentId: studentUser.id,
+          eventId,
+          claimedRole: participationRole,
+          achievementNotes: 'Auto-enrolled via Official Faculty Master CSV Roster',
+          status: 'APPROVED_BY_CSV',
+          verifiedById: facultyId,
+          verifiedAt: new Date(),
+        },
+      });
+
+      const cert = await issueCertificateForClaim({
+        claimId: newClaim.id,
+        approvalStatus: 'APPROVED_BY_CSV',
+        verifiedById: facultyId,
+        overrideRole: participationRole,
+      });
+
+      directCertificatesIssued++;
+      issuedCertificates.push(cert);
+    }
+  }
+
+  // Clean up temporary uploaded CSV file after processing
+  try {
+    if (fs.existsSync(csvFilePath)) {
+      fs.unlinkSync(csvFilePath);
+    }
+  } catch (_) {
+    // Ignore file cleanup warnings
+  }
+
+  return {
+    totalRowsParsed: parsedRows.length,
+    rosterSavedCount,
+    pendingClaimsAutoVerified,
+    directCertificatesIssued,
+    issuedCertificates,
+  };
+}
+
+module.exports = {
+  normalizeParticipationRole,
+  parseParticipantCsv,
+  issueCertificateForClaim,
+  processEventCsvUpload,
+};

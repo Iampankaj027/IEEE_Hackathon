@@ -1,0 +1,122 @@
+# ==============================================================================
+# VeriCred Platform - Root .gitignore
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Dependencies & Package Managers
+# ------------------------------------------------------------------------------
+node_modules/
+*/node_modules/
+.pnp
+.pnp.js
+
+# ------------------------------------------------------------------------------
+# 2. Environment Variables & Secrets (CRITICAL)
+# ------------------------------------------------------------------------------
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+backend/.env
+frontend/.env
+*.env
+*.pem
+*.key
+*.cert
+
+# Allow .env.example files to be tracked
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+
+# ------------------------------------------------------------------------------
+# 3. Build & Distribution Outputs
+# ------------------------------------------------------------------------------
+dist/
+dist-ssr/
+build/
+out/
+*/dist/
+*.local
+
+# Vite cache
+.vite/
+frontend/.vite/
+
+# ------------------------------------------------------------------------------
+# 4. Uploads, Generated Files & Media
+# ------------------------------------------------------------------------------
+uploads/*
+!uploads/**/.gitkeep
+backend/uploads/*
+!backend/uploads/**/.gitkeep
+
+# Exclude generated certificate PDFs and uploaded CSV rosters
+backend/uploads/certificates/*.pdf
+backend/uploads/csv-rosters/*.csv
+backend/uploads/reports/*.pdf
+backend/uploads/reports/*.csv
+backend/uploads/reports/*.xlsx
+
+# ------------------------------------------------------------------------------
+# 5. Database, SQLite & Local Storage
+# ------------------------------------------------------------------------------
+*.sqlite
+*.sqlite-journal
+*.sqlite3
+*.db
+*.db-journal
+
+# ------------------------------------------------------------------------------
+# 6. Logs & Debugging
+# ------------------------------------------------------------------------------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ------------------------------------------------------------------------------
+# 7. Operating System & IDE Files
+# ------------------------------------------------------------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+Desktop.ini
+
+# Editors & IDEs
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.sublime-workspace
+*.sublime-project
+
+# ------------------------------------------------------------------------------
+# 8. Testing & Coverage
+# ------------------------------------------------------------------------------
+coverage/
+*.lcov
+.nyc_output/
+
+# ------------------------------------------------------------------------------
+# 9. Temporary & Scratch Folders
+# ------------------------------------------------------------------------------
+temp/
+tmp/
+.cache/
+.eslintcache

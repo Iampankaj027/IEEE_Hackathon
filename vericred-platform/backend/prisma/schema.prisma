@@ -1,0 +1,212 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  FACULTY
+  HOD_ADMIN
+}
+
+enum EventCategory {
+  TECHNICAL
+  HACKATHON
+  SPORTS
+  CULTURAL
+  NSS_SOCIAL
+  WORKSHOP_SEMINAR
+}
+
+enum EventScope {
+  INTRA_COLLEGE
+  INTER_COLLEGE
+  STATE
+  NATIONAL
+  INTERNATIONAL
+}
+
+enum ParticipationRole {
+  WINNER_1ST
+  WINNER_2ND
+  WINNER_3RD
+  FINALIST
+  ORGANIZER
+  VOLUNTEER
+  PARTICIPANT
+}
+
+enum ClaimStatus {
+  PENDING
+  APPROVED_BY_CSV
+  APPROVED_BY_FACULTY
+  REJECTED
+}
+
+model User {
+  id                String              @id @default(uuid())
+  name              String
+  email             String              @unique
+  passwordHash      String
+  role              Role                @default(STUDENT)
+  
+  // Student Specific Fields
+  rollNo            String?             @unique // e.g., "23ESKIT045"
+  department        String              // e.g., "IT", "CSE", "ECE"
+  batchYear         Int?                // e.g., 2023
+  currentSemester   Int?                @default(5)
+  section           String?             @default("A")
+  totalCreditPoints Int                 @default(0)
+
+  // Relations
+  createdEvents     Event[]             @relation("EventCreator")
+  claims            ParticipationClaim[] @relation("StudentClaims")
+  verifiedClaims    ParticipationClaim[] @relation("FacultyVerifier")
+  certificates      Certificate[]
+  marksReceived     FacultyAssessment[] @relation("StudentAssessed")
+  marksAllotted     FacultyAssessment[] @relation("FacultyAssessor")
+
+  // Faculty Passcode Relations (HOD_ADMIN creates passcodes, Faculty/HOD consume them)
+  createdPasscodes  FacultyPasscode[]   @relation("PasscodeCreator")
+  consumedPasscode  FacultyPasscode?    @relation("PasscodeConsumers", fields: [consumedPasscodeId], references: [id])
+  consumedPasscodeId String?
+
+  createdAt         DateTime            @default(now())
+}
+
+model Event {
+  id                String              @id @default(uuid())
+  title             String
+  description       String?
+  category          EventCategory
+  scope             EventScope          @default(INTRA_COLLEGE)
+  eventDate         DateTime
+  semesterTag       Int                 // Which semester this event falls under (e.g., 5)
+  naacCriteriaTag   String?             // e.g., "5.3.1 - Sports/Cultural", "3.2.2 - Workshops"
+  organizerDept     String
+  
+  createdById       String
+  createdBy         User                @relation("EventCreator", fields: [createdById], references: [id])
+
+  // Relations
+  csvRoster         EventCsvRoster[]
+  claims            ParticipationClaim[]
+  certificates      Certificate[]
+
+  createdAt         DateTime            @default(now())
+}
+
+// Stores rows uploaded by Faculty via CSV for automatic verification
+model EventCsvRoster {
+  id                String              @id @default(uuid())
+  eventId           String
+  event             Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  studentRollNo     String              // Normalized Uppercase Roll No (e.g., "23ESKIT045")
+  studentName       String?
+  participationRole ParticipationRole   @default(PARTICIPANT)
+  isClaimed         Boolean             @default(false)
+
+  @@unique([eventId, studentRollNo])
+}
+
+// Student's request/claim for an event
+model ParticipationClaim {
+  id                String              @id @default(uuid())
+  studentId         String
+  student           User                @relation("StudentClaims", fields: [studentId], references: [id])
+  
+  eventId           String
+  event             Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  
+  claimedRole       ParticipationRole   @default(PARTICIPANT)
+  achievementNotes  String?             // Optional team name / project title
+  status            ClaimStatus         @default(PENDING)
+  
+  verifiedById      String?
+  verifiedBy        User?               @relation("FacultyVerifier", fields: [verifiedById], references: [id])
+  verifiedAt        DateTime?
+  rejectionReason   String?
+
+  certificate       Certificate?
+
+  createdAt         DateTime            @default(now())
+  @@unique([studentId, eventId])
+}
+
+// The Generated Verifiable Digital Certificate with Cryptographic Signature
+model Certificate {
+  id                String              @id @default(uuid())
+  certificateNo     String              @unique // Human-readable ID: "VC-2026-8F92A1"
+  
+  claimId           String              @unique
+  claim             ParticipationClaim  @relation(fields: [claimId], references: [id])
+  
+  studentId         String
+  student           User                @relation(fields: [studentId], references: [id])
+  
+  eventId           String
+  event             Event               @relation(fields: [eventId], references: [id])
+
+  participationRole ParticipationRole
+  creditPoints      Int                 // Auto-calculated points based on Scope + Role
+  semester          Int                 // Semester in which student earned this
+
+  // Cryptographic Security Fields
+  payloadString     String              // Canonical data string that was signed
+  cryptoSignature   String              @unique // HMAC-SHA256 Hash embedded in QR Code
+  qrVerificationUrl String              // Full URL inside QR: https://.../verify/VC-2026-8F92A1?sig=...
+  pdfUrl            String?             // Path to generated PDF file
+  
+  isRevoked         Boolean             @default(false)
+  issuedAt          DateTime            @default(now())
+}
+
+// Stores Marks Allotted by Faculty based on Student's Certificates & Points
+model FacultyAssessment {
+  id                String              @id @default(uuid())
+  studentId         String
+  student           User                @relation("StudentAssessed", fields: [studentId], references: [id])
+  
+  facultyId         String
+  faculty           User                @relation("FacultyAssessor", fields: [facultyId], references: [id])
+  
+  semester          Int
+  evaluationTitle   String              // e.g., "SODECA / Co-Curricular Internal Assessment"
+  totalCertsCount   Int                 // Snapshot of verified certs count
+  totalCreditPoints Int                 // Snapshot of points earned
+  recommendedMarks  Float               // System calculated marks
+  finalMarksAllotted Float              // Faculty locked marks
+  maxMarks          Float               @default(20)
+  remarks           String?
+  isLocked          Boolean             @default(true)
+
+  updatedAt         DateTime            @updatedAt
+  @@unique([studentId, semester, evaluationTitle])
+}
+
+// Dynamic Faculty Registration Passcodes — Generated by HOD_ADMIN
+model FacultyPasscode {
+  id                String              @id @default(uuid())
+  code              String              @unique  // The actual passcode string (e.g., "SKIT-IT-FAC-A7X9B2")
+  targetRole        Role                @default(FACULTY) // FACULTY or HOD_ADMIN
+  department        String              // Scoped to a specific department (e.g., "Information Technology")
+  label             String?             // Optional human-readable label (e.g., "Sem 5 Faculty Onboarding Batch")
+  
+  maxUses           Int                 @default(1) // How many times this passcode can be used (1 = single-use invite)
+  usedCount         Int                 @default(0) // Current consumption counter
+  
+  expiresAt         DateTime            // Hard expiration timestamp
+  isRevoked         Boolean             @default(false) // Manual kill-switch by admin
+
+  // Audit Trail
+  createdById       String              // The HOD_ADMIN who generated this passcode
+  createdBy         User                @relation("PasscodeCreator", fields: [createdById], references: [id])
+  consumedBy        User[]              @relation("PasscodeConsumers") // Users who used this passcode to register
+
+  createdAt         DateTime            @default(now())
+}
