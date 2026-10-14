@@ -4,57 +4,27 @@ const {
   getClassGradingMatrix,
   getStudentActivityDetails,
   saveFacultyAssessment,
+  bulkSaveFacultyAssessments,
   exportClassAssessmentExcel,
 } = require('../controllers/facultyGrading.controller');
 const { authenticateUser } = require('../middlewares/auth.middleware');
 const { authorizeRoles } = require('../middlewares/role.middleware');
 
-/**
- * @route   GET /api/faculty/grading/matrix
- * @desc    Retrieves the complete class grading matrix with aggregated points and recommended marks
- * @access  Private (Restricted to FACULTY and HOD_ADMIN)
- */
-router.get(
-  '/matrix',
-  authenticateUser,
-  authorizeRoles('FACULTY', 'HOD_ADMIN'),
-  getClassGradingMatrix
-);
+const guard = [authenticateUser, authorizeRoles('FACULTY', 'HOD_ADMIN')];
 
-/**
- * @route   GET /api/faculty/grading/student/:studentId
- * @desc    Retrieves 360° student activity certificates for the side-drawer inspection panel
- * @access  Private (Restricted to FACULTY and HOD_ADMIN)
- */
-router.get(
-  '/student/:studentId',
-  authenticateUser,
-  authorizeRoles('FACULTY', 'HOD_ADMIN'),
-  getStudentActivityDetails
-);
+// GET  /api/faculty/grading/matrix          — full class grading matrix with analytics
+router.get('/matrix', ...guard, getClassGradingMatrix);
 
-/**
- * @route   POST /api/faculty/grading/save
- * @desc    Saves and locks final faculty marks allotment for a student
- * @access  Private (Restricted to FACULTY and HOD_ADMIN)
- */
-router.post(
-  '/save',
-  authenticateUser,
-  authorizeRoles('FACULTY', 'HOD_ADMIN'),
-  saveFacultyAssessment
-);
+// GET  /api/faculty/grading/student/:id     — 360° student activity details for drawer
+router.get('/student/:studentId', ...guard, getStudentActivityDetails);
 
-/**
- * @route   GET /api/faculty/grading/export-excel
- * @desc    Downloads the class marks sheet as a formatted institutional .xlsx spreadsheet
- * @access  Private (Restricted to FACULTY and HOD_ADMIN)
- */
-router.get(
-  '/export-excel',
-  authenticateUser,
-  authorizeRoles('FACULTY', 'HOD_ADMIN'),
-  exportClassAssessmentExcel
-);
+// POST /api/faculty/grading/save            — save & lock single student assessment
+router.post('/save', ...guard, saveFacultyAssessment);
+
+// POST /api/faculty/grading/bulk-save       — bulk lock all filtered rows
+router.post('/bulk-save', ...guard, bulkSaveFacultyAssessments);
+
+// GET  /api/faculty/grading/export-excel    — download institutional .xlsx marks sheet
+router.get('/export-excel', ...guard, exportClassAssessmentExcel);
 
 module.exports = router;
