@@ -48,22 +48,22 @@ async function register(req, res) {
       });
     }
 
-    // 1a. Strict role whitelist — prevent arbitrary role injection
-    const ALLOWED_ROLES = ['STUDENT', 'FACULTY', 'HOD_ADMIN'];
+    // 1a. Strict role whitelist — HOD_ADMIN cannot self-register; account is created directly in DB
+    const ALLOWED_ROLES = ['STUDENT', 'FACULTY'];
     const normalizedRole = String(role).trim().toUpperCase();
     if (!ALLOWED_ROLES.includes(normalizedRole)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid account role "${role}". Allowed roles: ${ALLOWED_ROLES.join(', ')}.`,
+        message: `Invalid account role "${role}". Self-registration is only allowed for: ${ALLOWED_ROLES.join(', ')}.`,
       });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedRollNo = rollNo ? String(rollNo).trim().toUpperCase() : null;
 
-    // 1b. Faculty / HOD_ADMIN Registration Gate — Database-Backed Passcode Validation
+    // 1b. Faculty Registration Gate — Database-Backed Passcode Validation
     let validatedPasscode = null;
-    if (normalizedRole === 'FACULTY' || normalizedRole === 'HOD_ADMIN') {
+    if (normalizedRole === 'FACULTY') {
       const { facultyPasscode } = req.body;
       if (!facultyPasscode || !String(facultyPasscode).trim()) {
         return res.status(403).json({
