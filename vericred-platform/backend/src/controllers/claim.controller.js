@@ -1,5 +1,6 @@
 const prisma = require('../config/db');
 const { issueCertificateForClaim } = require('../utils/csvMatcher');
+const { createNotification } = require('../utils/notificationHelper');
 
 /**
  * Submits a participation claim for an event.
@@ -95,6 +96,20 @@ async function submitClaim(req, res) {
         approvalStatus: 'APPROVED_BY_CSV',
         overrideRole: finalRole,
       });
+
+      // Notify student of instant auto-approval
+      await createNotification({
+        userId: studentId,
+        type: 'CLAIM_APPROVED_CSV',
+        title: 'Participation Verified — Certificate Issued',
+        body: `Your claim for "${event.title}" was automatically verified against the faculty roster. Certificate ${issuedCertificate?.certificateNo} is ready.`,
+        metadata: {
+          certificateNo: issuedCertificate?.certificateNo,
+          creditPoints: issuedCertificate?.creditPoints,
+          eventTitle: event.title,
+          claimId: newClaim.id,
+        },
+      });
     }
 
     return res.status(201).json({
@@ -135,6 +150,7 @@ async function reviewClaim(req, res) {
       where: { id: claimId },
       include: {
         certificate: true,
+        event: { select: { createdById: true, title: true } },
       },
     });
 
@@ -142,6 +158,14 @@ async function reviewClaim(req, res) {
       return res.status(404).json({
         success: false,
         message: 'Participation claim not found.',
+      });
+    }
+
+    // Ownership guard: FACULTY can only act on claims for events they created
+    if (req.user.role === 'FACULTY' && claim.event.createdById !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only review claims for events you have created.',
       });
     }
 
@@ -154,13 +178,27 @@ async function reviewClaim(req, res) {
     }
 
     if (action.toUpperCase() === 'REJECT') {
+      const reason = rejectionReason ? rejectionReason.trim() : 'Rejected by faculty reviewer';
       const updatedClaim = await prisma.participationClaim.update({
         where: { id: claimId },
+        include: { event: { select: { title: true } } },
         data: {
           status: 'REJECTED',
           verifiedById: req.user.id,
           verifiedAt: new Date(),
-          rejectionReason: rejectionReason ? rejectionReason.trim() : 'Rejected by faculty reviewer',
+          rejectionReason: reason,
+        },
+      });
+
+      await createNotification({
+        userId: claim.studentId,
+        type: 'CLAIM_REJECTED',
+        title: 'Participation Claim Rejected',
+        body: `Your claim for "${updatedClaim.event.title}" was not approved. Reason: ${reason}`,
+        metadata: {
+          eventTitle: updatedClaim.event.title,
+          claimId,
+          rejectionReason: reason,
         },
       });
 
@@ -177,6 +215,19 @@ async function reviewClaim(req, res) {
       approvalStatus: 'APPROVED_BY_FACULTY',
       verifiedById: req.user.id,
       overrideRole: overrideRole ? overrideRole.toUpperCase() : null,
+    });
+
+    await createNotification({
+      userId: claim.studentId,
+      type: 'CLAIM_APPROVED_FACULTY',
+      title: 'Participation Approved — Certificate Issued',
+      body: `Your claim for "${claim.event.title}" was approved by faculty. Certificate ${certificate?.certificateNo} (+${certificate?.creditPoints} pts) has been issued.`,
+      metadata: {
+        certificateNo: certificate?.certificateNo,
+        creditPoints: certificate?.creditPoints,
+        eventTitle: claim.event.title,
+        claimId,
+      },
     });
 
     return res.status(200).json({
@@ -244,10 +295,17 @@ async function getPendingClaims(req, res) {
     const { department } = req.query;
 
     const whereClause = { status: 'PENDING' };
+
+    // Build event sub-filter: FACULTY only sees claims for events they own
+    const eventFilter = {};
+    if (req.user.role === 'FACULTY') {
+      eventFilter.createdById = req.user.id;
+    }
     if (department) {
-      whereClause.event = {
-        organizerDept: { contains: department, mode: 'insensitive' },
-      };
+      eventFilter.organizerDept = { contains: department, mode: 'insensitive' };
+    }
+    if (Object.keys(eventFilter).length > 0) {
+      whereClause.event = eventFilter;
     }
 
     const pendingClaims = await prisma.participationClaim.findMany({

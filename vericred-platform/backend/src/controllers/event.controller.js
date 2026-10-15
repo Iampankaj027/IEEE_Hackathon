@@ -203,6 +203,14 @@ async function uploadEventCsv(req, res) {
       });
     }
 
+    // Ownership guard: FACULTY can only upload rosters for events they created
+    if (req.user.role === 'FACULTY' && event.createdById !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only upload CSV rosters for events you have created.',
+      });
+    }
+
     // 2. Process CSV via csvMatcher engine
     const csvFilePath = req.file.path;
     const result = await processEventCsvUpload({

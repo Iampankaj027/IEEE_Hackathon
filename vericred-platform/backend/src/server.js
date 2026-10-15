@@ -26,6 +26,7 @@ const certificateRoutes = require('./routes/certificate.routes');
 const facultyGradingRoutes = require('./routes/facultyGrading.routes');
 const publicVerifyRoutes = require('./routes/publicVerify.routes');
 const adminRoutes = require('./routes/admin.routes');
+const notificationRoutes = require('./routes/notification.routes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/events', eventRoutes);
@@ -34,6 +35,7 @@ app.use('/api/certificates', certificateRoutes);
 app.use('/api/faculty/grading', facultyGradingRoutes);
 app.use('/api/verify', publicVerifyRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // 4. Root Health Check Endpoint
 app.get('/', (req, res) => {

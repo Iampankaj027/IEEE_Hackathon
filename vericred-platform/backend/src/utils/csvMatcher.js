@@ -7,6 +7,7 @@ const {
   createSignedCertificateBundle,
 } = require('./cryptoSigner');
 const { buildCertificatePdf } = require('./certificateBuilder');
+const { createNotification } = require('./notificationHelper');
 
 /**
  * Normalizes human-written role strings from a Faculty CSV (e.g., "1st Prize", "Winner", "Coord")
@@ -398,6 +399,18 @@ async function processEventCsvUpload({
         });
         pendingClaimsAutoVerified++;
         issuedCertificates.push(cert);
+
+        await createNotification({
+          userId: studentUser.id,
+          type: 'CLAIM_APPROVED_CSV',
+          title: 'Participation Verified — Certificate Issued',
+          body: `Your pending claim was matched against the official faculty CSV roster. Certificate ${cert?.certificateNo} (+${cert?.creditPoints} pts) is ready.`,
+          metadata: {
+            certificateNo: cert?.certificateNo,
+            creditPoints: cert?.creditPoints,
+            claimId: existingClaim.id,
+          },
+        });
       }
     } else if (autoIssueForRegisteredStudents) {
       // Student is registered in DB but hasn't filled the claim form yet.
@@ -423,6 +436,18 @@ async function processEventCsvUpload({
 
       directCertificatesIssued++;
       issuedCertificates.push(cert);
+
+      await createNotification({
+        userId: studentUser.id,
+        type: 'CLAIM_APPROVED_CSV',
+        title: 'You Were Added to an Event — Certificate Issued',
+        body: `Faculty roster listed you as a participant. Certificate ${cert?.certificateNo} (+${cert?.creditPoints} pts) has been automatically issued to your account.`,
+        metadata: {
+          certificateNo: cert?.certificateNo,
+          creditPoints: cert?.creditPoints,
+          claimId: newClaim.id,
+        },
+      });
     }
   }
 
