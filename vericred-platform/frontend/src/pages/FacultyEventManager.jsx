@@ -112,8 +112,12 @@ export default function FacultyEventManager() {
 
       if (eventsRes.data?.events) {
         setEvents(eventsRes.data.events);
-        if (!selectedCsvEventId && eventsRes.data.events.length > 0) {
-          setSelectedCsvEventId(eventsRes.data.events[0].id);
+        // Initialize CSV event selector to first event the faculty owns
+        const owned = eventsRes.data.events.filter(
+          (ev) => user?.role === 'HOD_ADMIN' || ev.createdById === user?.id
+        );
+        if (!selectedCsvEventId && owned.length > 0) {
+          setSelectedCsvEventId(owned[0].id);
         }
       }
 
@@ -125,7 +129,7 @@ export default function FacultyEventManager() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCsvEventId]);
+  }, [selectedCsvEventId, user?.id, user?.role]);
 
   useEffect(() => {
     fetchManagerData();
@@ -291,7 +295,12 @@ export default function FacultyEventManager() {
     }
   };
 
-  const totalCertificatesIssuedAcrossEvents = events.reduce(
+  // FACULTY only manages events they created; HOD_ADMIN sees all events
+  const myEvents = user?.role === 'HOD_ADMIN'
+    ? events
+    : events.filter((ev) => ev.createdById === user?.id);
+
+  const totalCertificatesIssuedAcrossEvents = myEvents.reduce(
     (sum, ev) => sum + (ev._count?.certificates || 0),
     0
   );
@@ -326,10 +335,10 @@ export default function FacultyEventManager() {
             <div className="grid grid-cols-3 gap-3 shrink-0">
               <div className="bg-slate-50 border border-slate-200 rounded px-4 py-2.5 text-center">
                 <span className="font-mono text-[10px] uppercase text-slate-500 block">
-                  Total Events
+                  {user?.role === 'HOD_ADMIN' ? 'All Events' : 'My Events'}
                 </span>
                 <span className="font-mono text-xl font-bold text-slate-900">
-                  {events.length}
+                  {myEvents.length}
                 </span>
               </div>
               <div className="bg-amber-50 border border-amber-200 rounded px-4 py-2.5 text-center">
@@ -564,7 +573,7 @@ export default function FacultyEventManager() {
                   }`}
                 >
                   <FolderKanban className="w-4 h-4 text-slate-600" />
-                  <span>All Events &amp; Rosters ({events.length})</span>
+                  <span>All Events &amp; Rosters ({myEvents.length})</span>
                 </button>
               </div>
 
@@ -799,11 +808,17 @@ export default function FacultyEventManager() {
                       onChange={(e) => setSelectedCsvEventId(e.target.value)}
                       className="w-full px-3 py-2 text-sm border border-slate-300 rounded bg-white focus:outline-none focus:border-slate-900"
                     >
-                      {events.map((ev) => (
-                        <option key={ev.id} value={ev.id}>
-                          {ev.title} ({ev.category} • Sem {ev.semesterTag})
+                      {myEvents.length === 0 ? (
+                        <option value="" disabled>
+                          No events created by you yet
                         </option>
-                      ))}
+                      ) : (
+                        myEvents.map((ev) => (
+                          <option key={ev.id} value={ev.id}>
+                            {ev.title} ({ev.category} • Sem {ev.semesterTag})
+                          </option>
+                        ))
+                      )}
                     </select>
                   </div>
 
@@ -856,7 +871,7 @@ export default function FacultyEventManager() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-xs">
-                    {events.map((ev) => (
+                    {myEvents.map((ev) => (
                       <tr key={ev.id} className="hover:bg-slate-50">
                         <td className="py-3.5 px-4">
                           <div className="font-bold text-slate-900">{ev.title}</div>

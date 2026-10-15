@@ -14,6 +14,7 @@ import {
   KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import NotificationBell from './NotificationBell';
 
 export default function Navbar() {
   const { user, isAuthenticated, isStudent, isFaculty, isAdmin, logoutUser } = useAuth();
@@ -157,6 +158,9 @@ export default function Navbar() {
 
             {isAuthenticated && user ? (
               <div className="flex items-center gap-3 pl-2 border-l border-slate-800">
+                {/* Notification Bell */}
+                <NotificationBell />
+
                 {/* Student Verified Credit Points Counter */}
                 {isStudent && (
                   <div className="hidden sm:flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-2.5 py-1 rounded">
