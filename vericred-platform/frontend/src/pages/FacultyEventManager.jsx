@@ -371,11 +371,10 @@ export default function FacultyEventManager() {
             <div className="p-5">
               {eventFeedback && (
                 <div
-                  className={`mb-4 p-3 rounded border text-xs flex items-start gap-2 ${
-                    eventFeedback.type === 'success'
+                  className={`mb-4 p-3 rounded border text-xs flex items-start gap-2 ${eventFeedback.type === 'success'
                       ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                       : 'bg-red-50 border-red-200 text-red-700'
-                  }`}
+                    }`}
                 >
                   {eventFeedback.type === 'success' ? (
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
@@ -531,11 +530,10 @@ export default function FacultyEventManager() {
                 <button
                   type="button"
                   onClick={() => setActiveTab('PENDING_QUEUE')}
-                  className={`py-4 text-xs font-bold uppercase tracking-wider border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${
-                    activeTab === 'PENDING_QUEUE'
+                  className={`py-4 text-xs font-bold uppercase tracking-wider border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${activeTab === 'PENDING_QUEUE'
                       ? 'border-slate-900 text-slate-900'
                       : 'border-transparent text-slate-500 hover:text-slate-700'
-                  }`}
+                    }`}
                 >
                   <Clock className="w-4 h-4 text-amber-600" />
                   <span>1-Click Claim Approval Queue ({pendingClaims.length})</span>
@@ -544,11 +542,10 @@ export default function FacultyEventManager() {
                 <button
                   type="button"
                   onClick={() => setActiveTab('CSV_UPLOADER')}
-                  className={`py-4 text-xs font-bold uppercase tracking-wider border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${
-                    activeTab === 'CSV_UPLOADER'
+                  className={`py-4 text-xs font-bold uppercase tracking-wider border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${activeTab === 'CSV_UPLOADER'
                       ? 'border-slate-900 text-slate-900'
                       : 'border-transparent text-slate-500 hover:text-slate-700'
-                  }`}
+                    }`}
                 >
                   <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                   <span>Upload Master CSV Roster (Bulk Auto-Verify)</span>
@@ -557,11 +554,10 @@ export default function FacultyEventManager() {
                 <button
                   type="button"
                   onClick={() => setActiveTab('EVENTS_REGISTRY')}
-                  className={`py-4 text-xs font-bold uppercase tracking-wider border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${
-                    activeTab === 'EVENTS_REGISTRY'
+                  className={`py-4 text-xs font-bold uppercase tracking-wider border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${activeTab === 'EVENTS_REGISTRY'
                       ? 'border-slate-900 text-slate-900'
                       : 'border-transparent text-slate-500 hover:text-slate-700'
-                  }`}
+                    }`}
                 >
                   <FolderKanban className="w-4 h-4 text-slate-600" />
                   <span>All Events &amp; Rosters ({events.length})</span>
@@ -583,13 +579,12 @@ export default function FacultyEventManager() {
               <div className="p-6">
                 {reviewFeedback && (
                   <div
-                    className={`mb-4 p-3 rounded border text-xs flex items-start gap-2.5 ${
-                      reviewFeedback.type === 'success'
+                    className={`mb-4 p-3 rounded border text-xs flex items-start gap-2.5 ${reviewFeedback.type === 'success'
                         ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                         : reviewFeedback.type === 'warning'
-                        ? 'bg-amber-50 border-amber-200 text-amber-800'
-                        : 'bg-red-50 border-red-200 text-red-700'
-                    }`}
+                          ? 'bg-amber-50 border-amber-200 text-amber-800'
+                          : 'bg-red-50 border-red-200 text-red-700'
+                      }`}
                   >
                     <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
                     <span>{reviewFeedback.message}</span>
@@ -734,11 +729,10 @@ export default function FacultyEventManager() {
 
                 {csvUploadResult && (
                   <div
-                    className={`p-4 rounded border text-xs ${
-                      csvUploadResult.type === 'success'
+                    className={`p-4 rounded border text-xs ${csvUploadResult.type === 'success'
                         ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
                         : 'bg-red-50 border-red-200 text-red-800'
-                    }`}
+                      }`}
                   >
                     <div className="font-bold flex items-center gap-2">
                       {csvUploadResult.type === 'success' ? (

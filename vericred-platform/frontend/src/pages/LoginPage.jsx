@@ -384,7 +384,7 @@ export default function LoginPage() {
                     {/* Full Name */}
                     <div>
                       <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
-                        Full Legal Name (As printed on Certificates)
+                        Full Name
                       </label>
                       <div className="relative">
                         <UserCheck className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />

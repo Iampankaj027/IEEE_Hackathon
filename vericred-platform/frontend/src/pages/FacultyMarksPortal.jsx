@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   BarChart3, ChevronUp, ChevronDown, FileSpreadsheet, FileText,
   Lock, Unlock, RefreshCw, Users, CheckCircle2,
-  AlertTriangle, Eye, Zap, X, Filter, TrendingUp, Award,
+  AlertTriangle, Eye, X, Filter, TrendingUp,
 } from 'lucide-react';
 import Navbar from '../components/layout/Navbar';
 import Student360Drawer from '../components/faculty/Student360Drawer';
@@ -11,29 +11,7 @@ import { useAuth } from '../context/AuthContext';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PRESETS = [
-  {
-    id: 'SODECA',
-    label: 'SODECA / Co-Curricular',
-    sub: '50 Marks · Target 100 Pts · Min 10',
-    evaluationTitle: 'SODECA / Co-Curricular Assessment',
-    maxMarks: 50, targetPoints: 100, baseMinMarks: 10,
-  },
-  {
-    id: 'INTERNAL',
-    label: 'Internal Activity Sessional',
-    sub: '20 Marks · Target 60 Pts · Min 0',
-    evaluationTitle: 'Internal Activity Sessional',
-    maxMarks: 20, targetPoints: 60, baseMinMarks: 0,
-  },
-  {
-    id: 'AICTE',
-    label: 'AICTE 100-Point Mandate',
-    sub: '100 Marks · Target 100 Pts · Min 0',
-    evaluationTitle: 'AICTE 100-Point Mandate Assessment',
-    maxMarks: 100, targetPoints: 100, baseMinMarks: 0,
-  },
-];
+
 
 const BASE_DEPARTMENTS = [
   'Information Technology',
@@ -117,7 +95,7 @@ export default function FacultyMarksPortal() {
 
   // UI panels
   const [showAnalytics, setShowAnalytics] = useState(true);
-  const [showNaac, setShowNaac]           = useState(false);
+
   const [drawer360Student, setDrawer360Student] = useState(null);
 
   // Status
@@ -147,12 +125,7 @@ export default function FacultyMarksPortal() {
     else { setSortBy(col); setSortDir('asc'); }
   };
 
-  const applyPreset = (p) => {
-    setEvaluationTitle(p.evaluationTitle);
-    setMaxMarks(p.maxMarks);
-    setTargetPoints(p.targetPoints);
-    setBaseMinMarks(p.baseMinMarks);
-  };
+
 
   // ─── Computed display rows ─────────────────────────────────────────────────
 
@@ -196,9 +169,7 @@ export default function FacultyMarksPortal() {
     ...new Set([...BASE_DEPARTMENTS, ...(analytics?.distinctDepartments || [])]),
   ].sort();
 
-  const activePreset = PRESETS.find(
-    (p) => p.evaluationTitle === evaluationTitle && p.maxMarks === maxMarks && p.targetPoints === targetPoints
-  ) || null;
+
 
   // ─── Data loading ──────────────────────────────────────────────────────────
 
@@ -367,10 +338,10 @@ export default function FacultyMarksPortal() {
               VERICRED · INSTITUTIONAL INTELLIGENCE ENGINE · SKIT021
             </p>
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight mt-0.5">
-              Centralized Grading, Analytics & NAAC Reporting Portal
+              Centralized Analytics & Reporting Portal
             </h1>
             <p className="text-xs text-slate-500 mt-1 max-w-2xl">
-              Cross-departmental participation analytics, accreditation-ready NAAC/IQAC reporting, and smart formula-driven grading.
+              Cross-departmental participation analytics, smart formula-driven grading, and institutional reporting.
             </p>
           </div>
           {successMsg && (
@@ -381,35 +352,7 @@ export default function FacultyMarksPortal() {
           )}
         </div>
 
-        {/* ── 1. Assessment Preset Bar ── */}
-        <div className="bg-white border border-slate-200 rounded p-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 shrink-0">
-              <Zap className="w-3.5 h-3.5 text-amber-500" />
-              Assessment Preset
-            </div>
-            {PRESETS.map((p) => (
-              <button key={p.id} type="button" onClick={() => applyPreset(p)}
-                className={`px-3.5 py-2 rounded border text-xs font-medium transition-all flex flex-col items-start ${
-                  activePreset?.id === p.id
-                    ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-white text-slate-700 border-slate-300 hover:border-slate-500 hover:bg-slate-50'
-                }`}>
-                <span className="font-semibold">{p.label}</span>
-                <span className={`font-mono text-[10px] mt-0.5 ${activePreset?.id === p.id ? 'text-slate-400' : 'text-slate-400'}`}>
-                  {p.sub}
-                </span>
-              </button>
-            ))}
-            <div className="ml-auto flex items-center gap-3 text-xs font-mono text-slate-500 shrink-0">
-              <span>Max <strong className="text-slate-900">{maxMarks}</strong></span>
-              <span className="text-slate-300">|</span>
-              <span>Target <strong className="text-slate-900">{targetPoints} pts</strong></span>
-              <span className="text-slate-300">|</span>
-              <span>Min <strong className="text-slate-900">{baseMinMarks}</strong></span>
-            </div>
-          </div>
-        </div>
+
 
         {/* ── 2. Multi-Filter Control Deck ── */}
         <div className="bg-white border border-slate-200 rounded p-4">
@@ -484,7 +427,7 @@ export default function FacultyMarksPortal() {
           <>
 
             {/* ═══════════════════════════════════════════════════════════
-                3. INSTITUTIONAL ANALYTICS & NAAC INTELLIGENCE DASHBOARD
+                3. INSTITUTIONAL ANALYTICS DASHBOARD
             ═══════════════════════════════════════════════════════════ */}
             <div className="bg-white border border-slate-200 rounded overflow-hidden">
               <button type="button" onClick={() => setShowAnalytics((v) => !v)}
@@ -492,7 +435,7 @@ export default function FacultyMarksPortal() {
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <BarChart3 className="w-4 h-4 text-amber-400 shrink-0" />
                   <span className="text-xs font-semibold uppercase tracking-wider text-white">
-                    Institutional Participation Analytics & NAAC Intelligence
+                    Institutional Participation Analytics
                   </span>
                   <span className="font-mono text-[10px] bg-slate-800 border border-slate-700 text-slate-300 px-2 py-0.5 rounded">
                     {analytics.totalStudents} enrolled · {analytics.totalVerifiedCertificates} certs · {analytics.participationCoveragePercent}% coverage
@@ -746,107 +689,7 @@ export default function FacultyMarksPortal() {
               )}
             </div>
 
-            {/* ═══════════════════════════════════════════════════════════
-                4. NAAC / IQAC ACCREDITATION CRITERIA SUMMARY MATRIX
-            ═══════════════════════════════════════════════════════════ */}
-            <div className="bg-white border border-slate-200 rounded overflow-hidden">
-              <button type="button" onClick={() => setShowNaac((v) => !v)}
-                className="w-full flex items-center justify-between px-5 py-3.5 bg-slate-900 hover:bg-slate-800 transition-colors">
-                <div className="flex items-center gap-2.5">
-                  <Award className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span className="text-xs font-semibold uppercase tracking-wider text-white">
-                    NAAC / IQAC Accreditation Criteria Summary Matrix
-                  </span>
-                  {(analytics.naacCriteriaSummary || []).length > 0 && (
-                    <span className="font-mono text-[10px] bg-slate-800 border border-slate-700 text-slate-300 px-2 py-0.5 rounded">
-                      {(analytics.naacCriteriaSummary || []).length} criteria mapped
-                    </span>
-                  )}
-                </div>
-                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform shrink-0 ${showNaac ? 'rotate-180' : ''}`} />
-              </button>
 
-              {showNaac && (
-                <div className="p-5">
-                  {(analytics.naacCriteriaSummary || []).length === 0 ? (
-                    <div className="text-center py-8">
-                      <Award className="w-8 h-8 text-slate-200 mx-auto mb-2" />
-                      <p className="text-sm text-slate-500 font-medium">No NAAC Criteria Tags Found</p>
-                      <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                        Set <code className="bg-slate-100 px-1 rounded text-slate-600">naacCriteriaTag</code> when creating events
-                        (e.g., "5.3.1 - Sports/Cultural", "3.2.2 - Workshops") to populate this matrix.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="text-xs text-slate-500 mb-3">
-                        Verified student participation records mapped to NAAC/NBA accreditation criteria —
-                        for use by your IQAC coordinator in annual self-study reports.
-                      </p>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-xs min-w-[500px]">
-                          <thead>
-                            <tr className="bg-slate-100 border-b border-slate-200">
-                              <th className="px-3 py-2.5 text-left font-semibold text-slate-600 uppercase tracking-wider text-[10px]">
-                                NAAC Criterion / Category Tag
-                              </th>
-                              <th className="px-3 py-2.5 text-center font-semibold text-slate-600 uppercase tracking-wider text-[10px] w-28">
-                                Verified Records
-                              </th>
-                              <th className="px-3 py-2.5 text-center font-semibold text-slate-600 uppercase tracking-wider text-[10px] w-20">
-                                % Share
-                              </th>
-                              <th className="px-3 py-2.5 text-left font-semibold text-slate-600 uppercase tracking-wider text-[10px]">
-                                Coverage
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {(analytics.naacCriteriaSummary || []).map(({ tag, count }, idx) => {
-                              const pct = analytics.totalVerifiedCertificates > 0
-                                ? (count / analytics.totalVerifiedCertificates) * 100
-                                : 0;
-                              const isUncategorized = tag === 'Uncategorized / Not Mapped';
-                              return (
-                                <tr key={tag} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}>
-                                  <td className="px-3 py-2.5">
-                                    <span className={`font-mono text-xs font-medium ${isUncategorized ? 'text-slate-400 italic' : 'text-slate-800'}`}>
-                                      {tag}
-                                    </span>
-                                  </td>
-                                  <td className="px-3 py-2.5 text-center">
-                                    <span className="font-mono font-bold text-slate-900">{count}</span>
-                                  </td>
-                                  <td className="px-3 py-2.5 text-center">
-                                    <span className={`font-mono text-xs ${isUncategorized ? 'text-slate-400' : 'text-slate-600'}`}>
-                                      {pct.toFixed(1)}%
-                                    </span>
-                                  </td>
-                                  <td className="px-3 py-2.5">
-                                    <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden max-w-[200px]">
-                                      <div className={`h-full rounded-full transition-all ${isUncategorized ? 'bg-slate-300' : 'bg-slate-700'}`}
-                                        style={{ width: `${pct}%` }} />
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                          <tfoot>
-                            <tr className="bg-slate-100 border-t border-slate-200">
-                              <td className="px-3 py-2.5 font-semibold text-slate-700 text-xs">Total</td>
-                              <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-900">{analytics.totalVerifiedCertificates}</td>
-                              <td className="px-3 py-2.5 text-center font-mono text-slate-600 text-xs">100%</td>
-                              <td className="px-3 py-2.5" />
-                            </tr>
-                          </tfoot>
-                        </table>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
 
             {/* ═══════════════════════════════════════════════════════════
                 5. COHORT FILTER PILLS + BULK ACTION TOOLBAR
