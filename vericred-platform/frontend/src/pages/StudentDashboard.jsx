@@ -135,7 +135,7 @@ export default function StudentDashboard() {
         eventId: selectedEventId,
         claimedRole,
         achievementNotes,
-      });
+      }, { timeout: 60000 }); // 60s — cert issuance + Neon cold-start can be slow
 
       if (res.data?.success) {
         const wasAutoVerified = res.data.claim?.status === 'APPROVED_BY_CSV';
@@ -156,13 +156,25 @@ export default function StudentDashboard() {
         }
       }
     } catch (error) {
-      const msg =
-        error.response?.data?.message ||
-        'Failed to submit participation claim.';
-      setClaimFeedback({
-        type: 'error',
-        message: msg,
-      });
+      // A network timeout here means the backend is still processing.
+      // Reload to check if the claim/cert was actually created.
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        setClaimFeedback({
+          type: 'success',
+          isAutoVerified: true,
+          message: 'Certificate is being processed. Refreshing your credentials…',
+        });
+        await Promise.all([fetchDashboardData(), refreshUserProfile()]);
+        setActiveTab('CERTIFICATES');
+      } else {
+        const msg =
+          error.response?.data?.message ||
+          'Failed to submit participation claim.';
+        setClaimFeedback({
+          type: 'error',
+          message: msg,
+        });
+      }
     } finally {
       setSubmittingClaim(false);
     }
@@ -638,7 +650,7 @@ export default function StudentDashboard() {
                                 <span>LinkedIn &amp; Social Share</span>
                               </button>
 
-                              {pdfDownloadHref && (
+                              {pdfDownloadHref ? (
                                 <a
                                   href={pdfDownloadHref}
                                   target="_blank"
@@ -649,6 +661,14 @@ export default function StudentDashboard() {
                                   <Download className="w-3.5 h-3.5" />
                                   <span>Download PDF</span>
                                 </a>
+                              ) : (
+                                <span className="px-3 py-1.5 rounded bg-amber-50 border border-amber-200 text-amber-700 text-xs font-medium flex items-center gap-1.5 cursor-default select-none">
+                                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                                  </svg>
+                                  PDF generating&hellip; refresh in a moment
+                                </span>
                               )}
                             </div>
                           </div>

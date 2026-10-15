@@ -1,6 +1,10 @@
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 const prisma = require('../config/db');
-const { processEventCsvUpload } = require('../utils/csvMatcher');
+const { processEventCsvUpload, parseParticipantCsvPreview } = require('../utils/csvMatcher');
+
+const CSV_ROSTER_DIR = path.join(__dirname, '../../uploads/csv-rosters');
 
 /**
  * Creates a new institutional event
@@ -239,9 +243,118 @@ async function uploadEventCsv(req, res) {
   }
 }
 
+/**
+ * Returns the CSV headers + first 5 rows so the faculty can map columns.
+ * Saves the file temporarily; returns a tempFileKey for the confirm step.
+ * POST /api/events/:id/preview-csv
+ * Restricted to: FACULTY (event owner), HOD_ADMIN
+ */
+async function previewEventCsv(req, res) {
+  try {
+    const { id: eventId } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No CSV file uploaded.' });
+    }
+
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) {
+      fs.unlinkSync(req.file.path);
+      return res.status(404).json({ success: false, message: 'Event not found.' });
+    }
+
+    if (req.user.role === 'FACULTY' && event.createdById !== req.user.id) {
+      fs.unlinkSync(req.file.path);
+      return res.status(403).json({ success: false, message: 'You can only manage events you have created.' });
+    }
+
+    // Rename temp file to a keyed name so we can retrieve it in the confirm step
+    const tempFileKey = `preview-${crypto.randomBytes(8).toString('hex')}.csv`;
+    const tempFilePath = path.join(CSV_ROSTER_DIR, tempFileKey);
+    fs.renameSync(req.file.path, tempFilePath);
+
+    const { headers, previewRows, suggestedMapping } = await parseParticipantCsvPreview(tempFilePath);
+
+    if (headers.length === 0) {
+      fs.unlinkSync(tempFilePath);
+      return res.status(400).json({ success: false, message: 'CSV appears to be empty or has no headers.' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      tempFileKey,
+      headers,
+      previewRows,
+      suggestedMapping,
+      totalHeaderCount: headers.length,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: `CSV preview failed: ${error.message}` });
+  }
+}
+
+/**
+ * Processes a previously previewed CSV using the faculty-confirmed column mapping.
+ * POST /api/events/:id/confirm-csv
+ * Body: { tempFileKey: string, columnMapping: { rollNo, name, role } }
+ * Restricted to: FACULTY (event owner), HOD_ADMIN
+ */
+async function confirmEventCsvMapping(req, res) {
+  try {
+    const { id: eventId } = req.params;
+    const { tempFileKey, columnMapping } = req.body;
+
+    if (!tempFileKey || !columnMapping?.rollNo) {
+      return res.status(400).json({ success: false, message: 'tempFileKey and columnMapping.rollNo are required.' });
+    }
+
+    // Security: prevent path traversal — tempFileKey must be a safe filename only
+    if (!/^[\w\-.]+\.csv$/.test(tempFileKey)) {
+      return res.status(400).json({ success: false, message: 'Invalid tempFileKey.' });
+    }
+
+    const tempFilePath = path.join(CSV_ROSTER_DIR, tempFileKey);
+    if (!fs.existsSync(tempFilePath)) {
+      return res.status(410).json({ success: false, message: 'Preview session expired. Please re-upload the CSV.' });
+    }
+
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!event) return res.status(404).json({ success: false, message: 'Event not found.' });
+
+    if (req.user.role === 'FACULTY' && event.createdById !== req.user.id) {
+      fs.unlinkSync(tempFilePath);
+      return res.status(403).json({ success: false, message: 'You can only manage events you have created.' });
+    }
+
+    const result = await processEventCsvUpload({
+      eventId,
+      csvFilePath: tempFilePath,
+      facultyId: req.user.id,
+      autoIssueForRegisteredStudents: true,
+      columnMapping,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `CSV processed successfully. ${result.totalRowsParsed} records parsed, ${result.pendingClaimsAutoVerified} claims auto-verified, ${result.directCertificatesIssued} certificates issued.`,
+      stats: {
+        totalRowsParsed: result.totalRowsParsed,
+        rosterSavedCount: result.rosterSavedCount,
+        pendingClaimsAutoVerified: result.pendingClaimsAutoVerified,
+        directCertificatesIssued: result.directCertificatesIssued,
+      },
+      issuedCertificates: result.issuedCertificates,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: `CSV processing failed: ${error.message}` });
+  }
+}
+
 module.exports = {
   createEvent,
   listEvents,
   getEventById,
   uploadEventCsv,
+  previewEventCsv,
+  confirmEventCsvMapping,
 };
