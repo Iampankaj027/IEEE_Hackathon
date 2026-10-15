@@ -5,6 +5,8 @@ const {
   listEvents,
   getEventById,
   uploadEventCsv,
+  previewEventCsv,
+  confirmEventCsvMapping,
 } = require('../controllers/event.controller');
 const { authenticateUser } = require('../middlewares/auth.middleware');
 const { authorizeRoles } = require('../middlewares/role.middleware');
@@ -42,6 +44,23 @@ router.post(
   authorizeRoles('FACULTY', 'HOD_ADMIN'),
   uploadCsv.single('rosterFile'),
   uploadEventCsv
+);
+
+// Step 1: Upload CSV → get headers + preview rows + suggested column mapping
+router.post(
+  '/:id/preview-csv',
+  authenticateUser,
+  authorizeRoles('FACULTY', 'HOD_ADMIN'),
+  uploadCsv.single('rosterFile'),
+  previewEventCsv
+);
+
+// Step 2: Submit confirmed column mapping → process CSV and issue certificates
+router.post(
+  '/:id/confirm-csv',
+  authenticateUser,
+  authorizeRoles('FACULTY', 'HOD_ADMIN'),
+  confirmEventCsvMapping
 );
 
 module.exports = router;

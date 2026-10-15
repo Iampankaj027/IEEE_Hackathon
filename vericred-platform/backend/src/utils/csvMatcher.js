@@ -90,6 +90,102 @@ function extractCsvField(row, possibleKeys) {
 }
 
 /**
+ * Reads the first N rows + all headers from a CSV file for column-mapping preview.
+ * Also suggests a best-guess mapping based on known aliases.
+ *
+ * @param {string} filePath
+ * @param {number} [maxRows=5]
+ * @returns {Promise<{ headers: string[], previewRows: Object[], suggestedMapping: { rollNo, name, role } }>}
+ */
+function parseParticipantCsvPreview(filePath, maxRows = 5) {
+  return new Promise((resolve, reject) => {
+    const headers = [];
+    const previewRows = [];
+    let headersSet = false;
+
+    fs.createReadStream(filePath)
+      .pipe(csv())
+      .on('headers', (h) => {
+        headers.push(...h);
+        headersSet = true;
+      })
+      .on('data', (row) => {
+        if (!headersSet) headers.push(...Object.keys(row));
+        if (previewRows.length < maxRows) previewRows.push(row);
+      })
+      .on('end', () => {
+        const suggestedMapping = suggestColumnMapping(headers);
+        resolve({ headers, previewRows, suggestedMapping });
+      })
+      .on('error', (err) => reject(new Error(`CSV Preview Error: ${err.message}`)));
+  });
+}
+
+/**
+ * Suggests which CSV header maps to rollNo / name / role using known alias sets.
+ */
+function suggestColumnMapping(headers) {
+  const ROLL_ALIASES = new Set([
+    'rollno', 'rollnumber', 'studentrollno', 'enrollmentno', 'enrollment',
+    'universityrollno', 'regno', 'id', 'prn', 'sapid', 'htno',
+    'admno', 'admissionno', 'studentid', 'uid',
+  ]);
+  const NAME_ALIASES = new Set([
+    'name', 'studentname', 'fullname', 'participantname',
+    'sname', 'studname', 'candidatename',
+  ]);
+  const ROLE_ALIASES = new Set([
+    'role', 'participationrole', 'position', 'rank', 'status',
+    'achievement', 'award', 'prize', 'category', 'result',
+    'prizewon', 'awardwon', 'performance',
+  ]);
+
+  const norm = (s) => s.trim().toLowerCase().replace(/[\s_\-.]+/g, '');
+  const suggested = { rollNo: '', name: '', role: '' };
+
+  for (const h of headers) {
+    const n = norm(h);
+    if (!suggested.rollNo && ROLL_ALIASES.has(n)) suggested.rollNo = h;
+    if (!suggested.name && NAME_ALIASES.has(n)) suggested.name = h;
+    if (!suggested.role && ROLE_ALIASES.has(n)) suggested.role = h;
+  }
+
+  return suggested;
+}
+
+/**
+ * Parses a CSV using an explicit { rollNo, name, role } column mapping
+ * (column values are the actual header strings from the uploaded file).
+ *
+ * @param {string} filePath
+ * @param {{ rollNo: string, name: string, role: string }} columnMapping
+ * @returns {Promise<Array<{ studentRollNo, studentName, participationRole }>>}
+ */
+function parseParticipantCsvWithMapping(filePath, columnMapping) {
+  return new Promise((resolve, reject) => {
+    const participantsMap = new Map();
+
+    fs.createReadStream(filePath)
+      .pipe(csv())
+      .on('data', (row) => {
+        const rawRollNo = columnMapping.rollNo ? row[columnMapping.rollNo] : null;
+        if (!rawRollNo || !String(rawRollNo).trim()) return;
+
+        const studentRollNo = String(rawRollNo).trim().toUpperCase();
+        const studentName = columnMapping.name
+          ? (row[columnMapping.name] ? String(row[columnMapping.name]).trim() : null)
+          : null;
+        const rawRole = columnMapping.role ? row[columnMapping.role] : null;
+        const participationRole = normalizeParticipationRole(rawRole);
+
+        participantsMap.set(studentRollNo, { studentRollNo, studentName, participationRole });
+      })
+      .on('end', () => resolve(Array.from(participantsMap.values())))
+      .on('error', (err) => reject(new Error(`CSV Mapping Parse Error: ${err.message}`)));
+  });
+}
+
+/**
  * Parses an uploaded CSV file into a clean, deduplicated array of participant records.
  *
  * @param {string} filePath - Absolute path to uploaded CSV file
@@ -225,26 +321,10 @@ async function issueCertificateForClaim({
     verifierName = `${claim.event.createdBy.name} (${claim.event.organizerDept})`;
   }
 
-  // 4. Generate the physical PDF Certificate with embedded QR Code
-  const { publicPdfUrl } = await buildCertificatePdf({
-    certificateNo,
-    studentName: claim.student.name,
-    studentRollNo,
-    studentDepartment: claim.student.department,
-    eventTitle: claim.event.title,
-    eventCategory: claim.event.category,
-    eventScope: claim.event.scope,
-    eventDate: claim.event.eventDate,
-    participationRole: finalRole,
-    creditPoints,
-    semester,
-    cryptoSignature,
-    qrVerificationUrl,
-    issuedAt,
-    verifierName,
-  });
-
-  // 5. Execute Database Transaction: Update Claim + Create Certificate + Increment Student Points
+  // 4. Execute Database Transaction: Update Claim + Create Certificate + Increment Student Points
+  // PDF generation is intentionally moved AFTER the transaction so the HTTP response
+  // is not blocked by slow PDFKit/QR rendering. pdfUrl is updated once the background
+  // job completes (usually within 2–5 seconds).
   const createdCertificate = await prisma.$transaction(async (tx) => {
     await tx.participationClaim.update({
       where: { id: claim.id },
@@ -269,32 +349,53 @@ async function issueCertificateForClaim({
         payloadString,
         cryptoSignature,
         qrVerificationUrl,
-        pdfUrl: publicPdfUrl,
+        pdfUrl: null, // set by background job below
         issuedAt,
       },
     });
 
     await tx.user.update({
       where: { id: claim.student.id },
-      data: {
-        totalCreditPoints: {
-          increment: creditPoints,
-        },
-      },
+      data: { totalCreditPoints: { increment: creditPoints } },
     });
 
-    // Mark CSV roster entry as claimed if present
     await tx.eventCsvRoster.updateMany({
-      where: {
-        eventId: claim.event.id,
-        studentRollNo,
-      },
-      data: {
-        isClaimed: true,
-      },
+      where: { eventId: claim.event.id, studentRollNo },
+      data: { isClaimed: true },
     });
 
     return cert;
+  });
+
+  // 5. Generate PDF in background — does not block the HTTP response.
+  // All data is captured in closure. Certificate record already exists in DB.
+  setImmediate(async () => {
+    try {
+      const { publicPdfUrl } = await buildCertificatePdf({
+        certificateNo,
+        studentName: claim.student.name,
+        studentRollNo,
+        studentDepartment: claim.student.department,
+        eventTitle: claim.event.title,
+        eventCategory: claim.event.category,
+        eventScope: claim.event.scope,
+        eventDate: claim.event.eventDate,
+        participationRole: finalRole,
+        creditPoints,
+        semester,
+        cryptoSignature,
+        qrVerificationUrl,
+        issuedAt,
+        verifierName,
+      });
+
+      await prisma.certificate.update({
+        where: { id: createdCertificate.id },
+        data: { pdfUrl: publicPdfUrl },
+      });
+    } catch (err) {
+      console.error(`[PDF] Background generation failed for ${certificateNo}:`, err.message);
+    }
   });
 
   return createdCertificate;
@@ -325,8 +426,11 @@ async function processEventCsvUpload({
   csvFilePath,
   facultyId,
   autoIssueForRegisteredStudents = true,
+  columnMapping = null,
 }) {
-  const parsedRows = await parseParticipantCsv(csvFilePath);
+  const parsedRows = columnMapping
+    ? await parseParticipantCsvWithMapping(csvFilePath, columnMapping)
+    : await parseParticipantCsv(csvFilePath);
 
   if (parsedRows.length === 0) {
     throw new Error(
@@ -472,6 +576,9 @@ async function processEventCsvUpload({
 module.exports = {
   normalizeParticipationRole,
   parseParticipantCsv,
+  parseParticipantCsvPreview,
+  parseParticipantCsvWithMapping,
+  suggestColumnMapping,
   issueCertificateForClaim,
   processEventCsvUpload,
 };

@@ -86,10 +86,15 @@ export default function FacultyEventManager() {
   const [creatingEvent, setCreatingEvent] = useState(false);
   const [eventFeedback, setEventFeedback] = useState(null);
 
-  // CSV Upload State
+  // CSV Upload State — Step 1
   const [selectedCsvEventId, setSelectedCsvEventId] = useState('');
   const [csvFile, setCsvFile] = useState(null);
-  const [uploadingCsv, setUploadingCsv] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+
+  // CSV Upload State — Step 2 (column mapping)
+  const [csvPreview, setCsvPreview] = useState(null); // { tempFileKey, headers, previewRows, suggestedMapping }
+  const [columnMapping, setColumnMapping] = useState({ rollNo: '', name: '', role: '' });
+  const [confirming, setConfirming] = useState(false);
   const [csvUploadResult, setCsvUploadResult] = useState(null);
 
   // Pending Claims Review State
@@ -174,12 +179,12 @@ export default function FacultyEventManager() {
     }
   };
 
-  // 2. Upload Master Participant CSV Roster Handler
-  const handleCsvUploadSubmit = async (e) => {
+  // 2a. Step 1 — Upload CSV to get column preview
+  const handleCsvPreview = async (e) => {
     e.preventDefault();
     if (!selectedCsvEventId || !csvFile) return;
 
-    setUploadingCsv(true);
+    setPreviewing(true);
     setCsvUploadResult(null);
 
     try {
@@ -187,34 +192,60 @@ export default function FacultyEventManager() {
       formData.append('rosterFile', csvFile);
 
       const res = await axiosInstance.post(
-        `/events/${selectedCsvEventId}/upload-roster`,
+        `/events/${selectedCsvEventId}/preview-csv`,
         formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
-        }
+        { headers: { 'Content-Type': 'multipart/form-data' } }
       );
 
       if (res.data?.success) {
-        setCsvUploadResult({
-          type: 'success',
-          message: res.data.message,
-          stats: res.data.stats,
-        });
+        setCsvPreview(res.data);
+        setColumnMapping(res.data.suggestedMapping || { rollNo: '', name: '', role: '' });
+      }
+    } catch (error) {
+      setCsvUploadResult({
+        type: 'error',
+        message: error.response?.data?.message || 'Failed to read CSV file.',
+      });
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
+  // 2b. Step 2 — Confirm column mapping and process
+  const handleCsvConfirm = async () => {
+    if (!csvPreview?.tempFileKey || !columnMapping.rollNo) return;
+
+    setConfirming(true);
+    setCsvUploadResult(null);
+
+    try {
+      const res = await axiosInstance.post(
+        `/events/${selectedCsvEventId}/confirm-csv`,
+        { tempFileKey: csvPreview.tempFileKey, columnMapping }
+      );
+
+      if (res.data?.success) {
+        setCsvUploadResult({ type: 'success', message: res.data.message, stats: res.data.stats });
         setCsvFile(null);
+        setCsvPreview(null);
+        setColumnMapping({ rollNo: '', name: '', role: '' });
         await fetchManagerData();
       }
     } catch (error) {
       setCsvUploadResult({
         type: 'error',
-        message:
-          error.response?.data?.message ||
-          'Failed to parse and process participant CSV file.',
+        message: error.response?.data?.message || 'Failed to process CSV.',
       });
     } finally {
-      setUploadingCsv(false);
+      setConfirming(false);
     }
+  };
+
+  const handleCsvReset = () => {
+    setCsvPreview(null);
+    setCsvFile(null);
+    setColumnMapping({ rollNo: '', name: '', role: '' });
+    setCsvUploadResult(null);
   };
 
   // Generate & Download a Sample CSV Roster for quick demo testing
@@ -257,7 +288,7 @@ export default function FacultyEventManager() {
         action,
         overrideRole,
         rejectionReason,
-      });
+      }, { timeout: 60000 }); // 60s — cert issuance on Neon can be slow
 
       if (res.data?.success) {
         setReviewFeedback({
@@ -713,142 +744,217 @@ export default function FacultyEventManager() {
                 <div className="bg-slate-50 border border-slate-200 rounded p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
                     <h3 className="text-sm font-bold text-slate-900">
-                      Automated CSV Roster Verification &amp; Bulk Certificate Generator
+                      Smart CSV Column Mapper &amp; Bulk Certificate Generator
                     </h3>
                     <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-                      Upload a spreadsheet containing{' '}
-                      <code className="font-mono bg-white px-1.5 py-0.5 border border-slate-200 rounded">
-                        roll_no, student_name, participation_role
-                      </code>
-                      . Any registered student matching the CSV will immediately receive their
-                      HMAC-SHA256 signed PDF certificate, and future student claims for this
-                      event will auto-verify with zero manual intervention.
+                      Upload any CSV — any column names, any schema. Preview the headers, map
+                      each column to the required field, then confirm to issue certificates automatically.
                     </p>
                   </div>
-
                   <button
                     type="button"
                     onClick={handleDownloadSampleCsv}
                     className="shrink-0 px-3.5 py-2 rounded bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
                   >
                     <Download className="w-3.5 h-3.5 text-slate-600" />
-                    <span>Download Sample CSV</span>
+                    <span>Sample CSV</span>
                   </button>
                 </div>
 
+                {/* Result banner */}
                 {csvUploadResult && (
-                  <div
-                    className={`p-4 rounded border text-xs ${csvUploadResult.type === 'success'
-                        ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                        : 'bg-red-50 border-red-200 text-red-800'
-                      }`}
-                  >
+                  <div className={`p-4 rounded border text-xs ${csvUploadResult.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-800'}`}>
                     <div className="font-bold flex items-center gap-2">
-                      {csvUploadResult.type === 'success' ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                      ) : (
-                        <AlertCircle className="w-4 h-4 text-red-600" />
-                      )}
+                      {csvUploadResult.type === 'success'
+                        ? <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                        : <AlertCircle className="w-4 h-4 text-red-600" />}
                       <span>{csvUploadResult.message}</span>
                     </div>
-
                     {csvUploadResult.stats && (
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3 pt-3 border-t border-emerald-200 font-mono">
-                        <div>
-                          <span className="text-[10px] text-emerald-700 block uppercase">
-                            Rows Parsed
-                          </span>
-                          <span className="text-sm font-bold">
-                            {csvUploadResult.stats.totalRowsParsed}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-emerald-700 block uppercase">
-                            Roster Saved
-                          </span>
-                          <span className="text-sm font-bold">
-                            {csvUploadResult.stats.rosterSavedCount}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-emerald-700 block uppercase">
-                            Pending Auto-Approved
-                          </span>
-                          <span className="text-sm font-bold">
-                            {csvUploadResult.stats.pendingClaimsAutoVerified}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] text-emerald-700 block uppercase">
-                            Direct Certs Issued
-                          </span>
-                          <span className="text-sm font-bold">
-                            {csvUploadResult.stats.directCertificatesIssued}
-                          </span>
-                        </div>
+                        {[
+                          ['Rows Parsed', csvUploadResult.stats.totalRowsParsed],
+                          ['Roster Saved', csvUploadResult.stats.rosterSavedCount],
+                          ['Auto-Approved', csvUploadResult.stats.pendingClaimsAutoVerified],
+                          ['Certs Issued', csvUploadResult.stats.directCertificatesIssued],
+                        ].map(([label, val]) => (
+                          <div key={label}>
+                            <span className="text-[10px] text-emerald-700 block uppercase">{label}</span>
+                            <span className="text-sm font-bold">{val}</span>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
                 )}
 
-                <form onSubmit={handleCsvUploadSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-                      1. Select Target Event for Roster Upload
-                    </label>
-                    <select
-                      required
-                      value={selectedCsvEventId}
-                      onChange={(e) => setSelectedCsvEventId(e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded bg-white focus:outline-none focus:border-slate-900"
-                    >
-                      {myEvents.length === 0 ? (
-                        <option value="" disabled>
-                          No events created by you yet
-                        </option>
-                      ) : (
-                        myEvents.map((ev) => (
-                          <option key={ev.id} value={ev.id}>
-                            {ev.title} ({ev.category} • Sem {ev.semesterTag})
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
-                      2. Attach Official Participant CSV File (.csv)
-                    </label>
-                    <div className="border-2 border-dashed border-slate-300 rounded bg-slate-50 p-6 text-center">
-                      <FileSpreadsheet className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                      <input
-                        type="file"
-                        accept=".csv,text/csv"
+                {/* STEP 1: File selection (shown when no preview loaded yet) */}
+                {!csvPreview && (
+                  <form onSubmit={handleCsvPreview} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                        1. Select Target Event
+                      </label>
+                      <select
                         required
-                        onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
-                        className="block w-full text-xs text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-slate-900 file:text-white hover:file:bg-slate-800 cursor-pointer max-w-xs mx-auto"
-                      />
-                      <p className="text-[11px] text-slate-500 mt-2 font-mono">
-                        Accepted columns: roll_no, student_name, participation_role (e.g.
-                        WINNER_1ST, PARTICIPANT, ORGANIZER)
-                      </p>
+                        value={selectedCsvEventId}
+                        onChange={(e) => setSelectedCsvEventId(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded bg-white focus:outline-none focus:border-slate-900"
+                      >
+                        {myEvents.length === 0
+                          ? <option value="" disabled>No events created by you yet</option>
+                          : myEvents.map((ev) => (
+                            <option key={ev.id} value={ev.id}>
+                              {ev.title} ({ev.category} • Sem {ev.semesterTag})
+                            </option>
+                          ))}
+                      </select>
                     </div>
-                  </div>
 
-                  <button
-                    type="submit"
-                    disabled={uploadingCsv || !csvFile}
-                    className="bg-amber-500 hover:bg-amber-400 disabled:bg-slate-300 text-slate-950 font-bold py-2.5 px-6 rounded text-xs uppercase tracking-wider flex items-center gap-2 transition-colors"
-                  >
-                    <Upload className="w-4 h-4" />
-                    <span>
-                      {uploadingCsv
-                        ? 'Parsing CSV & Generating Signed Certificates...'
-                        : 'Upload Master CSV & Auto-Issue Certificates'}
-                    </span>
-                  </button>
-                </form>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">
+                        2. Attach CSV File (any format)
+                      </label>
+                      <div className="border-2 border-dashed border-slate-300 rounded bg-slate-50 p-6 text-center">
+                        <FileSpreadsheet className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                        <input
+                          type="file"
+                          accept=".csv,text/csv"
+                          required
+                          onChange={(e) => { setCsvFile(e.target.files?.[0] || null); setCsvUploadResult(null); }}
+                          className="block w-full text-xs text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-slate-900 file:text-white hover:file:bg-slate-800 cursor-pointer max-w-xs mx-auto"
+                        />
+                        <p className="text-[11px] text-slate-500 mt-2">
+                          Any column names accepted — you will map them in the next step.
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={previewing || !csvFile}
+                      className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold py-2.5 px-6 rounded text-xs uppercase tracking-wider flex items-center gap-2 transition-colors"
+                    >
+                      <Eye className="w-4 h-4" />
+                      <span>{previewing ? 'Reading CSV headers…' : 'Preview Columns & Map'}</span>
+                    </button>
+                  </form>
+                )}
+
+                {/* STEP 2: Column mapping UI (shown after preview) */}
+                {csvPreview && (
+                  <div className="space-y-5">
+                    {/* Step header */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">
+                          Map your CSV columns to the required fields
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          {csvPreview.headers.length} columns detected in{' '}
+                          <span className="font-mono">{csvFile?.name}</span>
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCsvReset}
+                        className="text-xs text-slate-500 hover:text-slate-800 border border-slate-300 rounded px-2.5 py-1.5 bg-white hover:bg-slate-50 transition-colors flex items-center gap-1"
+                      >
+                        ← Back
+                      </button>
+                    </div>
+
+                    {/* Mapping dropdowns */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {[
+                        { field: 'rollNo', label: 'Roll No / Enrollment *', required: true },
+                        { field: 'name', label: 'Student Name (optional)', required: false },
+                        { field: 'role', label: 'Participation Role (optional)', required: false },
+                      ].map(({ field, label, required }) => (
+                        <div key={field}>
+                          <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                            {label}
+                          </label>
+                          <select
+                            value={columnMapping[field]}
+                            onChange={(e) => setColumnMapping((prev) => ({ ...prev, [field]: e.target.value }))}
+                            className={`w-full px-2.5 py-2 text-xs border rounded bg-white focus:outline-none focus:border-slate-900 ${
+                              required && !columnMapping[field] ? 'border-red-300' : 'border-slate-300'
+                            }`}
+                          >
+                            <option value="">— Not mapped —</option>
+                            {csvPreview.headers.map((h) => (
+                              <option key={h} value={h}>{h}</option>
+                            ))}
+                          </select>
+                          {columnMapping[field] && (
+                            <p className="text-[10px] text-emerald-700 mt-0.5 font-mono">
+                              ✓ mapped to "{columnMapping[field]}"
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Data preview table */}
+                    {csvPreview.previewRows?.length > 0 && (
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                          Data Preview (first {csvPreview.previewRows.length} rows)
+                        </p>
+                        <div className="overflow-x-auto border border-slate-200 rounded">
+                          <table className="text-[11px] w-full border-collapse">
+                            <thead>
+                              <tr className="bg-slate-100 border-b border-slate-200">
+                                {csvPreview.headers.map((h) => (
+                                  <th key={h} className={`px-3 py-2 text-left font-mono font-semibold whitespace-nowrap ${
+                                    Object.values(columnMapping).includes(h) ? 'text-amber-700 bg-amber-50' : 'text-slate-500'
+                                  }`}>
+                                    {h}
+                                    {columnMapping.rollNo === h && <span className="ml-1 text-[9px] text-amber-600 font-bold">[ROLL NO]</span>}
+                                    {columnMapping.name === h && <span className="ml-1 text-[9px] text-emerald-600 font-bold">[NAME]</span>}
+                                    {columnMapping.role === h && <span className="ml-1 text-[9px] text-blue-600 font-bold">[ROLE]</span>}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {csvPreview.previewRows.map((row, i) => (
+                                <tr key={i} className="hover:bg-slate-50">
+                                  {csvPreview.headers.map((h) => (
+                                    <td key={h} className={`px-3 py-2 whitespace-nowrap ${
+                                      Object.values(columnMapping).includes(h) ? 'font-semibold text-slate-800' : 'text-slate-500'
+                                    }`}>
+                                      {row[h] || '—'}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Confirm button */}
+                    <button
+                      type="button"
+                      disabled={confirming || !columnMapping.rollNo}
+                      onClick={handleCsvConfirm}
+                      className="bg-amber-500 hover:bg-amber-400 disabled:bg-slate-300 text-slate-950 font-bold py-2.5 px-6 rounded text-xs uppercase tracking-wider flex items-center gap-2 transition-colors"
+                    >
+                      <Upload className="w-4 h-4" />
+                      <span>
+                        {confirming
+                          ? 'Processing & Issuing Certificates…'
+                          : `Confirm Mapping & Process ${csvPreview.previewRows?.length ? `(${csvPreview.previewRows.length}+ rows)` : ''}`}
+                      </span>
+                    </button>
+                    {!columnMapping.rollNo && (
+                      <p className="text-[11px] text-red-600">Roll No column must be mapped before processing.</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
