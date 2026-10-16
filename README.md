@@ -7,10 +7,11 @@
 cd backend
 npm install
 npx prisma generate          # Generate Prisma client
-npx prisma db push           # Sync database schema (PostgreSQL)
-npm run seed                 # Seed default admin, faculty, sample students, and passcodes
+npx prisma db push           # Only for a new database without the schema
 npm run dev                  # Start backend dev server on http://localhost:5000
 ```
+
+The HOD_ADMIN account is already provisioned in the configured Neon database. Do not run a demo seeder.
 
 ### 2. Frontend
 ```bash
@@ -40,12 +41,12 @@ npm run dev                  # Start Vite dev server on http://localhost:5173
    - `CRYPTO_HMAC_SECRET` = `<64-char-hex-secret-for-crypto-signatures>`
    - `FRONTEND_URL` = `https://<your-frontend-app>.vercel.app`
    - `ISSUER_INSTITUTION_NAME` = `Swami Keshvanand Institute of Technology (SKIT)`
-5. After the first build deploys:
+5. If you connect a new, empty database, apply the schema once:
    - Open Render service **Shell** tab or run locally targeting production DB:
      ```bash
      npx prisma db push
-     node prisma/seed.js
      ```
+   Skip this step for the existing Neon database, which already has its schema and HOD_ADMIN account. Do not run a demo seeder.
 
 *(Alternative: Render will automatically detect the included [`render.yaml`](./render.yaml) blueprint if deployed via Blueprints).*
 
@@ -67,14 +68,6 @@ npm run dev                  # Start Vite dev server on http://localhost:5173
 
 ---
 
-## Seed Accounts (After Running `npm run seed`)
+## Admin Account
 
-| Role | Email | Password | Details |
-|---|---|---|---|
-| **HOD Admin** | `hod.it@skit.ac.in` | `Password@123` | Institutional IQAC HOD account |
-| **Faculty** | `ankit.sharma@skit.ac.in` | `Password@123` | Faculty marks & event evaluator |
-| **Student 1** | `aarav.23eskit001@skit.ac.in` | `Password@123` | Roll No: `23ESKIT001` (Winner 1st) |
-| **Student 2** | `priya.23eskit014@skit.ac.in` | `Password@123` | Roll No: `23ESKIT014` (Finalist) |
-| **Student 3** | `kunal.23eskit028@skit.ac.in` | `Password@123` | Roll No: `23ESKIT028` (Participant) |
-
-*Faculty Registration Passcode for new signups:* `SKIT-FAC-2026-SECURE`
+The HOD_ADMIN account has already been created in the configured Neon database. No default credentials or demo accounts are included in the repository. Keep the account password private.

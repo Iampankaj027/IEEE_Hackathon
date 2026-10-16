@@ -79,7 +79,7 @@ VeriCred solves this by providing:
 - Tokens expire in 7 days
 - HMAC-SHA256 certificate signatures use `crypto.timingSafeEqual` (prevents timing attacks)
 - Faculty registration gated by database-backed passcodes (not a hardcoded secret)
-- HOD_ADMIN cannot self-register — must be seeded directly in the database
+- HOD_ADMIN cannot self-register — must be provisioned directly in the database
 
 ---
 
@@ -1053,7 +1053,7 @@ Faculty logs in
 ### Flow 5: HOD_ADMIN Onboards New Faculty
 
 ```
-HOD_ADMIN logged in (credentials seeded directly in DB, no self-registration)
+HOD_ADMIN logged in (account provisioned directly in DB, no self-registration)
     → /admin/dashboard
     → Clicks "Generate New Faculty Registration Passcode"
     → Fills form:
@@ -1236,8 +1236,7 @@ VITE_API_BASE_URL=http://localhost:5000/api
 cd backend
 npm install
 npx prisma generate          # Generate Prisma client
-npx prisma migrate deploy    # Apply schema to database (or: npx prisma db push)
-node create-admin.js         # Seed HOD_ADMIN account into database
+npx prisma db push           # Only for a new database that has no schema yet
 npm run dev                  # Start backend on port 5000
 
 # Frontend (separate terminal)
@@ -1246,10 +1245,6 @@ npm install
 npm run dev                  # Start frontend on port 5173
 ```
 
-### Default Admin Credentials
-```
-Email:    admin@skit.ac.in
-Password: Admin@Vericred2026
-Role:     HOD_ADMIN
-```
-*(Created via `node create-admin.js` from the backend directory)*
+### Admin Account
+
+The HOD_ADMIN account is already provisioned in the configured Neon database. The repository does not include default admin credentials or a demo data seeder. Do not run `prisma db push` against this database unless its schema needs to be created or updated.
