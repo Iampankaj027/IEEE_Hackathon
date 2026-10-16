@@ -15,6 +15,8 @@ async function main() {
   await prisma.participationClaim.deleteMany();
   await prisma.eventCsvRoster.deleteMany();
   await prisma.event.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.facultyPasscode.deleteMany();
   await prisma.user.deleteMany();
 
   console.log('🧹 Cleared existing database tables.');
@@ -31,6 +33,19 @@ async function main() {
       department: 'Information Technology',
       batchYear: 2010,
       currentSemester: 8,
+    },
+  });
+
+  // Seed default reusable faculty onboarding passcode
+  await prisma.facultyPasscode.create({
+    data: {
+      code: 'SKIT-FAC-2026-SECURE',
+      targetRole: 'FACULTY',
+      department: 'Information Technology',
+      label: 'Institutional Faculty Onboarding Key 2026',
+      maxUses: 100,
+      expiresAt: new Date('2028-12-31T23:59:59Z'),
+      createdById: hodAdmin.id,
     },
   });
 

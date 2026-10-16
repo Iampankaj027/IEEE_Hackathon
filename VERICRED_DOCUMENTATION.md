@@ -1102,7 +1102,11 @@ Recruiter receives student's certificate (PDF or digital)
 ## 18. Key Files Map
 
 ```
-vericred-platform/
+IEEE_Hackathon/
+│
+├── .gitignore
+├── README.md
+├── VERICRED_DOCUMENTATION.md
 │
 ├── backend/
 │   ├── prisma/

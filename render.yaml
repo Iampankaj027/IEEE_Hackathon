@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: vericred-backend
+    runtime: node
+    rootDir: backend
+    plan: free
+    region: ohio
+    buildCommand: npm install && npx prisma generate
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CRYPTO_HMAC_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false
+      - key: ISSUER_INSTITUTION_NAME
+        value: "Swami Keshvanand Institute of Technology (SKIT)"

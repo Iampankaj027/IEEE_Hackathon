@@ -6,8 +6,11 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "build": "prisma generate",
+    "postinstall": "prisma generate",
     "prisma:generate": "npx prisma generate",
     "prisma:migrate": "npx prisma migrate dev --name init",
+    "db:push": "npx prisma db push",
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
@@ -21,11 +24,11 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "pdfkit": "^0.15.0",
+    "prisma": "^5.14.0",
     "qrcode": "^1.5.3",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
-    "nodemon": "^3.1.0",
-    "prisma": "^5.14.0"
+    "nodemon": "^3.1.0"
   }
 }
